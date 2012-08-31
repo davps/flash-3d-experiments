@@ -1,4 +1,5 @@
-flash-3d-experiments
-====================
+My firsts experiments with 3D (in Flash)
+========================================
 
-A collection of my old 3d experiments using Actionscript 3.
+This is a collection of my old 3d experiments using Actionscript 3.
+

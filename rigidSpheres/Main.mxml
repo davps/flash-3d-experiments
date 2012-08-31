@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Application 
+	xmlns:fx="http://ns.adobe.com/mxml/2009" 
+	xmlns:s="library://ns.adobe.com/flex/spark" 
+	xmlns:mx="library://ns.adobe.com/flex/halo"
+	applicationComplete="init(event)" 
+	minWidth="1024" 
+	minHeight="768">
+
+	<fx:Script>
+		<![CDATA[
+			import mx.controls.HSlider;
+			import mx.controls.sliderClasses.Slider;
+			import jiglib.physics.PhysicsSystem;
+			import jiglib.math.JNumber3D;
+			import org.papervision3d.events.InteractiveScene3DEvent;
+			import org.papervision3d.view.layer.ViewportLayer;
+			import org.papervision3d.materials.shadematerials.FlatShadeMaterial;
+			import jiglib.physics.RigidBody;
+			import org.papervision3d.materials.utils.MaterialsList;
+			import org.papervision3d.lights.PointLight3D;
+			import org.papervision3d.view.layer.util.ViewportLayerSortMode;
+			import org.papervision3d.core.utils.Mouse3D;
+			import jiglib.plugin.papervision3d.Papervision3DPhysics;
+			import jiglib.cof.JConfig;
+			import mx.core.UIComponent;
+			import mx.core.IVisualElement;
+			import org.papervision3d.objects.primitives.Plane;
+			import flashx.textLayout.conversion.PlainTextExporter;
+			import org.papervision3d.cameras.CameraType;
+			import mx.events.FlexEvent;
+			import org.papervision3d.view.BasicView;
+			
+			private var basicView:BasicView;
+
+			private var physics:Papervision3DPhysics;
+			private var mouse3D:Mouse3D;
+			private var mylight:PointLight3D;
+			private var shadeMaterial:FlatShadeMaterial;
+			private var ground:RigidBody;
+			private var ballBody:Array;
+				
+
+			protected function init(event:FlexEvent):void
+			{				
+				initPv3d();
+				initPhysicsObjects();
+				updateSlidesValues();
+				addEventListener(Event.ENTER_FRAME, loop);
+			}
+			private function initPv3d():void
+			{
+				basicView = new BasicView(pv3dPanel.width,pv3dPanel.height-35,false,true,CameraType.TARGET);
+				
+				basicView.camera.fov = 58;
+				
+				basicView.startRendering();
+
+				var uic:UIComponent = new UIComponent();
+					uic.addChild( basicView );
+				pv3dPanel.addElement( uic );				
+			}
+			private function initPhysicsObjects():void
+			{				
+				JConfig.angVelThreshold = 5;
+				JConfig.posThreshold = 0.2;
+				JConfig.deactivationTime = 0.5;
+				JConfig.numCollisionIterations = 4;
+				JConfig.numContactIterations = 8;
+				
+				physics = new Papervision3DPhysics(basicView.scene, 8);
+				
+				Mouse3D.enabled = true;
+				
+				mouse3D = basicView.viewport.interactiveSceneManager.mouse3D;
+				basicView.viewport.containerSprite.sortMode = ViewportLayerSortMode.INDEX_SORT;
+				
+				mylight = new PointLight3D(true, true);
+				mylight.y = 160;
+				mylight.z = -600;
+				 
+				shadeMaterial = new FlatShadeMaterial(mylight, 0xcccccc); //0x77ee77
+				var materialList :MaterialsList = new MaterialsList();
+				materialList.addMaterial(shadeMaterial, "all");
+					
+				ground = physics.createCube(materialList, 500, 500, 10);
+				ground.movable = false;
+				ground.friction = 0.2;
+				ground.restitution = 0.8;
+				basicView.viewport.getChildLayer(physics.getMesh(ground)).layerIndex = 1;
+				
+				var vplObjects:ViewportLayer = new ViewportLayer(basicView.viewport,null);
+				vplObjects.layerIndex = 2;
+				vplObjects.sortMode = ViewportLayerSortMode.Z_SORT;
+				basicView.viewport.containerSprite.addLayer(vplObjects);
+					
+				ballBody = new Array();
+				var color:uint;
+				for (var i:int = 0; i < 4; i++)
+				{
+					color = (i == 0)?0x333333:0x222244*i;
+					shadeMaterial = new FlatShadeMaterial(mylight, color);
+					shadeMaterial.interactive = true;
+					ballBody[i] = physics.createSphere(shadeMaterial, 22);
+					//ballBody[i].skin.mesh.addEventListener(InteractiveScene3DEvent.OBJECT_PRESS, handleMousePress);
+					ballBody[i].mass = 3;
+					ballBody[i].moveTo(new JNumber3D( -100, 30 + (50 * i + 50), -100));
+					vplObjects.addDisplayObject3D(ballBody[i].skin.mesh);
+				}
+					
+				basicView.camera.y = mylight.y;
+				basicView.camera.z = mylight.z;
+								
+			}
+			private function resetBox():void
+			{
+				for (var i:String in ballBody)
+				{
+					if (ballBody[i].currentState.position.y < -200)
+					{
+						ballBody[i].moveTo(new JNumber3D( 0, 1000 + (60 * Number(i) + 60), 0));
+					}
+				}			
+			}
+			private function loop(e:Event):void
+			{
+				ground.roll(.002);
+				ground.yaw(0.02);
+				
+				PhysicsSystem.getInstance().integrate(0.2);//static timeStep
+				
+				resetBox();
+			}
+			protected function changeRestitution(event:Event):void
+			{
+				for (var i:String in ballBody)
+				{
+					var rigidBody:RigidBody = ballBody[i]; 
+					rigidBody.restitution = event.currentTarget.value/10;
+				}				
+			}
+			protected function changeFriction(event:Event):void
+			{
+				for (var i:String in ballBody)
+				{
+					var rigidBody:RigidBody = ballBody[i]; 
+					rigidBody.friction = event.currentTarget.value/10;
+				}
+				ground.friction = event.currentTarget.value;				
+			}
+			protected function changeGravity(event:Event):void
+			{
+				physics.engine.setGravity( JNumber3D.multiply(JNumber3D.UP, event.currentTarget.value) );  
+			}
+			protected function changeCameraZPos(event:Event):void
+			{
+				basicView.camera.z = event.currentTarget.value;
+			}
+			protected function linkbutton1_clickHandler(event:MouseEvent):void
+			{
+				var url:String = "www.david5.com";
+				var urlreq:URLRequest = new URLRequest(url);
+				// TODO Auto-generated method stub
+			}
+			private function updateSlidesValues():void
+			{
+				hSlideRestitution.value = ballBody[0].restitution;
+				hSlideFriction.value = ballBody[0].friction;
+				hSlideGravity.value=physics.engine.gravity.modulo
+				hSlideCamera.value = basicView.camera.z;				
+			}
+		]]>
+	</fx:Script>
+
+	<s:HGroup x="50" y="50">	
+		<s:Panel id="pv3dPanel" x="20" y="18" width="640" height="480" title="Papervision3D and JiglibFlash integration" >
+			<mx:LinkButton x="526" y="0" label="www.david5.com" enabled="false" click="linkbutton1_clickHandler(event)"/>
+		</s:Panel>
+		<s:VGroup height="480" x="698" y="17">
+			<s:Panel id="physicsSystemPropertiesPanel" x="684" y="16" width="100%" height="50%" title="Physics System properties">
+				<mx:Form>
+					<mx:FormItem label="Restitution">
+						<s:HSlider id="hSlideRestitution" liveDragging="true" minimum="1" maximum="20" change="changeRestitution(event)"/>
+					</mx:FormItem>					
+					<mx:FormItem label="Friction">
+						<s:HSlider id="hSlideFriction" liveDragging="true"  minimum="1" maximum="10" change="changeFriction(event)"/>
+					</mx:FormItem>					
+					<mx:FormItem label="Gravity">
+						<s:HSlider id="hSlideGravity" liveDragging="true" minimum="-100" maximum="100" change="changeGravity(event)"/>
+					</mx:FormItem>					
+				</mx:Form>
+			</s:Panel>
+			<s:Panel id="rigidBodyProperties" x="684" y="16" width="100%" height="50%" title="3D Properties">
+				<mx:Form>
+					<mx:FormItem label="Z axis camera position">
+						<s:HSlider id="hSlideCamera" liveDragging="true"  minimum="-2000" maximum="2000" change="changeCameraZPos(event)"/>
+					</mx:FormItem>					
+					<!--<mx:FormItem label="Friction">
+						<s:HSlider  minimum="1" maximum="10" change="changeFriction(event)"/>
+					</mx:FormItem>					
+					<mx:FormItem label="Gravity">
+						<s:HSlider value="{physics.engine.gravity.modulo}"  minimum="-100" maximum="100" change="changeGravity(event)"/>
+					</mx:FormItem>-->					
+				</mx:Form>
+			</s:Panel>
+		</s:VGroup>		
+	</s:HGroup>
+
+</s:Application>
